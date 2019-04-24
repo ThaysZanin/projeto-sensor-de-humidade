@@ -1,0 +1,334 @@
+Sistema de irrigação
+#include <avr/io.h>
+#include <util/delay.h>
+#include "minhaCom.h"
+#include "minhasMacros.h"
+#include "minhaAdc.h"
+#include "Usart0.h"
+#define pino_sinal_analogico A0 << PC5
+#define pino_led_vermelho 5 << PB4
+#define pino_led_amarelo 6 << PB3
+#define pino_led_verde 7 << PB2
+#define pino_bomba 9 << PB1
+#define pino_sinal_analogico A0 MUX0
+#define led_vermelho 5 MUX1
+#define led_amarelo 6 MUX2
+#define led_verde 7 MUX3
+#define bomba 9 MUX4
+int valor_analogico;
+void setup()
+{
+  setBit(DDRB, DDD5);
+  clearBit(PORTB, PC5);
+  setBit(DDRB, DDD5);
+  clearBit(PORTB, PB4);
+  setBit(DDRB, DDD5);
+  clearBit(PORTB, PB3);
+  setBit(DDRB, DDD5);
+  clearBit(PORTB, PB2);
+  setBit(DDRB, DDD5);
+  clearBit(PORTB, PB1);
+}
+void initAdc()
+{
+  ADMUX |= (1 << REFS0); //Ajuste da referencia de tensão
+  ADMUX |= (1 << ADSP1) | (1 << ADPS0); //Ajusta o pre scaler para 1/8
+  ADMUX |= (1 << ADEN); //Habilita o Hardware do conversor para funcionar
+}
+void esolhe canal(uint8_t canal)
+{
+  switch (canal)
+  {
+    case 0: //Sistema ligado
+      setBit(ADMUX, MUX0);
+      clearBit(ADMUX, MUX1);
+      clearBit(ADMUX, MUX2);
+      clearBit(ADMUX, MUX3);
+      clearBit(ADMUX, MUX4);
+      break;
+    case 1: //Umidade baixa
+      setBit(ADMUX, MUX0);
+      setBit(ADMUX, MUX1);
+      clearBit(ADMUX, MUX2);
+      clearBit(ADMUX, MUX3);
+      setBit(ADMUX, MUX4);
+      break;
+    case 2: // Umidade moderada
+      setBit(ADMUX, MUX0);
+      clearBit(ADMUX, MUX1);
+      setBit(ADMUX, MUX2);
+      clearBit(ADMUX, MUX3);
+      setBit(ADMUX, MUX4);
+      break;
+    case 3://Umidade alta
+      clearBit(ADMUX, MUX0);
+      clearBit(ADMUX, MUX1);
+      clearBit(ADMUX, MUX2);
+      clearBit(ADMUX, MUX3);
+      setBit(ADMUX, MUX4);
+      break;
+
+  }
+}
+
+Sensor com biblioteca
+//Inicialização do conversor ADC - por padrão, vem configurado para o canal 0
+void initAdc(void)
+{
+  ADMUX |= (1 << REFS0);  //Ajuste da tensão de referência
+  ADCSRA |= (1 << ADPS1) | (1 << ADPS0); //Ajusta o pre-scaler para 1/8
+  ADCSRA |= (1 << ADEN); //Habilita o hardware do conversor para funcionar
+}
+
+void escolheCanal(uint8_t canal)
+{
+  switch (canal)
+  {
+    case 0:
+      clearBit(ADMUX, MUX0);
+      clearBit(ADMUX, MUX1);
+      clearBit(ADMUX, MUX2);
+      clearBit(ADMUX, MUX3);
+      break;
+    case 1:
+      setBit(ADMUX, MUX0);
+      clearBit(ADMUX, MUX1);
+      clearBit(ADMUX, MUX2);
+      clearBit(ADMUX, MUX3);
+      break;
+    case 2:
+      clearBit(ADMUX, MUX0);
+      setBit(ADMUX, MUX1);
+      clearBit(ADMUX, MUX2);
+      clearBit(ADMUX, MUX3);
+      break;
+    case 3:
+      setBit(ADMUX, MUX0);
+      setBit(ADMUX, MUX1);
+      clearBit(ADMUX, MUX2);
+      clearBit(ADMUX, MUX3);
+      break;
+    case 4:
+      clearBit(ADMUX, MUX0);
+      clearBit(ADMUX, MUX1);
+      setBit(ADMUX, MUX2);
+      clearBit(ADMUX, MUX3);
+      break;
+    case 5:
+      setBit(ADMUX, MUX0);
+      clearBit(ADMUX, MUX1);
+      setBit(ADMUX, MUX2);
+      clearBit(ADMUX, MUX3);
+      break;
+    default:
+      clearBit(ADMUX, MUX0);
+      clearBit(ADMUX, MUX1);
+      clearBit(ADMUX, MUX2);
+      clearBit(ADMUX, MUX3);
+      break;
+  }
+}
+
+int fazerLeitura(uint8_t canal)
+{
+  escolheCanal(canal);
+  ADCSRA |= (1 << ADSC);  //Liga o ADC no canal atual
+  loop_until_bit_is_clear(ADCSRA, ADSC);  //Espera até a conversão terminar
+  return  ADC;
+}
+
+Usart0
+#include <avr/io.h>
+#include <util/delay.h>
+
+#define BAUD 9600
+
+#include <util/setbaud.h>
+
+//Macros utlizados nos programas
+#define setBit(byte, bit) (byte |= 1 << bit)
+#define clearBit(byte, bit) (byte &= ~(1 << bit))
+#define toggleBit(byte, bit) (byte ^= (1 << bit))
+#define isBitSet(byte, bit) ((byte & (1 << bit)) == (1 << bit) ? 1 : 0)
+
+// Configura a USART
+void initUSART0(void)
+{
+  //Define a velocidade de comunicação
+  UBRR0H = UBRRH_VALUE;
+  UBRR0L = UBRRL_VALUE;
+  setBit(UCSR0B, TXEN0); //Habilita a transmissão serial
+  setBit(UCSR0B, RXEN0); //Habilita a recepção serial
+  setBit(UCSR0C, UCSZ01);//Configura comunicação em 8 bits com 1 stopbit
+  setBit(UCSR0C, UCSZ00);
+}
+
+//Função para transmitir 1 byte
+void transmitByte( uint8_t data)
+{
+  loop_until_bit_is_set(UCSR0A, UDRE0);
+  UDR0 = data;
+}
+uint8_t receiveByte(void)
+{
+  loop_until_bit_is_set(UCSR0A, RXC0);
+  return UDR0;
+}
+//Função para transmitir String
+void transmitirString(const char myString[])
+{
+  uint8_t i = 0;
+  while (myString[i])
+  {
+    transmitByte(myString[i]);
+    i++;
+  }
+}
+void setup()
+{
+  initUSART0();
+  setBit(DDRB, DDB5);
+  clearBit(PORTB, PORTB5);
+}
+void loop()
+{
+  uint8_t x = receiveByte();
+  if (x == 'a')
+    setBit(PORTB, PORTB5);
+  else if (x == 'b')
+    clearBit(PORTB, PORTB5);
+  else
+    transmitirString("Seu besta, conserta essa porra aqui");
+}
+
+
+minaAdc
+//Inicialização do conversor ADC - por padrão, vem configurado para o canal 0
+void initAdc(void)
+{
+  ADMUX |= (1 << REFS0);  //Ajuste da tensão de referência
+  ADCSRA |= (1 << ADPS1) | (1 << ADPS0); //Ajusta o pre-scaler para 1/8
+  ADCSRA |= (1 << ADEN); //Habilita o hardware do conversor para funcionar
+}
+
+void escolheCanal(uint8_t canal)
+{
+  switch(canal)
+  {
+    case 0:
+      clearBit(ADMUX, MUX0);
+      clearBit(ADMUX, MUX1);
+      clearBit(ADMUX, MUX2);
+      clearBit(ADMUX, MUX3);
+      break;
+    case 1:
+      setBit(ADMUX, MUX0);
+      clearBit(ADMUX, MUX1);
+      clearBit(ADMUX, MUX2);
+      clearBit(ADMUX, MUX3);
+      break;
+    case 2:
+      clearBit(ADMUX, MUX0);
+      setBit(ADMUX, MUX1);
+      clearBit(ADMUX, MUX2);
+      clearBit(ADMUX, MUX3);
+      break;
+    case 3:
+      setBit(ADMUX, MUX0);
+      setBit(ADMUX, MUX1);
+      clearBit(ADMUX, MUX2);
+      clearBit(ADMUX, MUX3);
+      break;
+    case 4:
+      clearBit(ADMUX, MUX0);
+      clearBit(ADMUX, MUX1);
+      setBit(ADMUX, MUX2);
+      clearBit(ADMUX, MUX3);
+      break;
+    case 5:
+      setBit(ADMUX, MUX0);
+      clearBit(ADMUX, MUX1);
+      setBit(ADMUX, MUX2);
+      clearBit(ADMUX, MUX3);
+      break;
+    case 6:
+      setBit(ADMUX, MUX0);
+      clearBit(ADMUX, MUX1);
+      clearBit(ADMUX, MUX2);
+      setBit(ADMUX, MUX3);
+      break;
+    case 7:
+      setBit(ADMUX, MUX0);
+      setBit(ADMUX, MUX1);
+      setBit(ADMUX, MUX2);
+      clearBit(ADMUX, MUX3);
+      break;
+    case 8:
+      
+      
+    default:
+      clearBit(ADMUX, MUX0);
+      clearBit(ADMUX, MUX1);
+      clearBit(ADMUX, MUX2);
+      clearBit(ADMUX, MUX3);
+      break;
+  }
+}
+
+int fazerLeitura(uint8_t canal)
+{
+  escolheCanal(canal);
+  ADCSRA |= (1 << ADSC);  //Liga o ADC no canal atual
+  loop_until_bit_is_clear(ADCSRA, ADSC);  //Espera até a conversão terminar
+  return  ADC;
+}
+
+minhaCom
+//definição para o setbaud funcionar
+#define BAUD 9600
+
+#include <util/setbaud.h>
+//funções de configuração da porta serial
+void initUSART(void)
+{
+    UBRR0H = UBRRH_VALUE;
+    UBRR0L = UBRRL_VALUE;
+
+    //Se o multiplicador de clock estiver ligado
+    #if USE_2X
+        UCSR0A |= (1 << U2X0);
+    #else
+        UCSR0A &= ~(1 << U2X0);
+    #endif
+
+    UCSR0B = (1 << TXEN0) | (1 << RXEN0);   //Habilita a transmissão e recepção de dados
+    UCSR0C = (1 << UCSZ01) | (1 << UCSZ00); //Configura a comunicação para 8 bits, 1 stop bit
+
+}
+
+void transmitByte(uint8_t data)
+{
+    loop_until_bit_is_set(UCSR0A, UDRE0);
+    UDR0 = data;
+}
+
+uint8_t receiveByte(void){
+    loop_until_bit_is_set(UCSR0A, RXC0);
+    return UDR0;
+}
+
+void printString(const char myString[])
+{
+    uint8_t i = 0;
+    while(myString[i]){
+        transmitByte(myString[i]);
+        i++;
+    }
+}
+
+minhaMacros
+//Definições de macros utilizadas no projeto
+#define setBit(byte, bit) (byte |= 1 << bit)
+#define clearBit(byte, bit) (byte &= ~(1<<bit))
+#define toggleBit(byte, bit) (byte ^= 1 << bit)
+#define isBitSet(byte,bit) ((byte & (1<<bit)) == (1<<bit)? 1 : 0)
